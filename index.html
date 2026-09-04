@@ -293,7 +293,7 @@
 <script>
   // ===== CONFIGURATION - replace with your own values =====
   const GOOGLE_CLIENT_ID = '611581015580-q23gi9smplqt7rabslfl36gs2m2cqmnt.apps.googleusercontent.com';
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby2VHcomhzbzrq7t6aF1Z7DF5a8eKHoiUzfYauP145FA4jvUCPn-bDFgobgDQq8gP4m/exec'; // ends with /exec
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby2VHcomhzbzrq7t6aF1Z7DF5a8eKHoiUzfYauP145FA4jvUCPn-bDFgobgDQq8gP4m/exec';
 
   const statusLine = document.getElementById('status-line');
 
@@ -317,52 +317,60 @@
     setStatus('Checking enrollment…', false);
     const idToken = response.credential;
 
-    fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ token: idToken })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (!data.authorized) {
-          setStatus('No enrollment found for this account. Reach out to GSET Academy if you think this is a mistake.', true);
-          return;
-        }
+    // JSONP diye call korchi - fetch()-er CORS somossa ekhane oshbe na,
+    // karon <script> tag cross-origin content nirbighne load korte pare.
+    window.__gsetAuthCallback = function (data) {
+      cleanupJsonp();
 
-        setStatus('', false);
-        document.getElementById('login-view').style.display = 'none';
+      if (!data.authorized) {
+        setStatus('No enrollment found for this account. Reach out to GSET Academy if you think this is a mistake.', true);
+        return;
+      }
 
-        document.getElementById('hello-text').textContent = 'Welcome back, ' + data.name;
-        document.getElementById('course-badge').textContent = data.course;
+      setStatus('', false);
+      document.getElementById('login-view').style.display = 'none';
 
-        const container = document.getElementById('videos-container');
+      document.getElementById('hello-text').textContent = 'Welcome back, ' + data.name;
+      document.getElementById('course-badge').textContent = data.course;
 
-        if (!data.videos || data.videos.length === 0) {
-          container.innerHTML = '<p class="empty-note">No recordings uploaded yet for your course. Check back after your next class.</p>';
-        } else {
-          data.videos.forEach((video, i) => {
-            const videoId = extractYouTubeId(video.link);
-            const index = String(i + 1).padStart(2, '0');
+      const container = document.getElementById('videos-container');
 
-            const card = document.createElement('div');
-            card.className = 'video-card';
-            card.innerHTML =
-              '<span class="video-card__index">' + index + '</span>' +
-              '<h3 class="video-card__title">' + video.title + '</h3>' +
-              '<div class="video-frame">' +
-                '<span class="corner tl"></span><span class="corner tr"></span>' +
-                '<span class="corner bl"></span><span class="corner br"></span>' +
-                '<iframe src="https://www.youtube.com/embed/' + videoId + '" allowfullscreen></iframe>' +
-              '</div>';
-            container.appendChild(card);
-          });
-        }
+      if (!data.videos || data.videos.length === 0) {
+        container.innerHTML = '<p class="empty-note">No recordings uploaded yet for your course. Check back after your next class.</p>';
+      } else {
+        data.videos.forEach((video, i) => {
+          const videoId = extractYouTubeId(video.link);
+          const index = String(i + 1).padStart(2, '0');
 
-        document.getElementById('content-view').style.display = 'block';
-      })
-      .catch(() => {
-        setStatus('Something went wrong. Please try again.', true);
-      });
+          const card = document.createElement('div');
+          card.className = 'video-card';
+          card.innerHTML =
+            '<span class="video-card__index">' + index + '</span>' +
+            '<h3 class="video-card__title">' + video.title + '</h3>' +
+            '<div class="video-frame">' +
+              '<span class="corner tl"></span><span class="corner tr"></span>' +
+              '<span class="corner bl"></span><span class="corner br"></span>' +
+              '<iframe src="https://www.youtube.com/embed/' + videoId + '" allowfullscreen></iframe>' +
+            '</div>';
+          container.appendChild(card);
+        });
+      }
+
+      document.getElementById('content-view').style.display = 'block';
+    };
+
+    const script = document.createElement('script');
+    script.src = APPS_SCRIPT_URL + '?token=' + encodeURIComponent(idToken) + '&callback=__gsetAuthCallback';
+    script.onerror = function () {
+      cleanupJsonp();
+      setStatus('Something went wrong. Please try again.', true);
+    };
+    document.body.appendChild(script);
+
+    function cleanupJsonp() {
+      delete window.__gsetAuthCallback;
+      script.remove();
+    }
   }
 
   function extractYouTubeId(url) {
