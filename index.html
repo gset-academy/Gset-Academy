@@ -317,10 +317,31 @@
     setStatus('Checking enrollment…', false);
     const idToken = response.credential;
 
-    // JSONP diye call korchi - fetch()-er CORS somossa ekhane oshbe na,
-    // karon <script> tag cross-origin content nirbighne load korte pare.
-    window.__gsetAuthCallback = function (data) {
-      cleanupJsonp();
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = APPS_SCRIPT_URL + '?token=' + encodeURIComponent(idToken);
+    document.body.appendChild(iframe);
+
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      setStatus('Something went wrong. Please try again.', true);
+    }, 12000);
+
+    function cleanup() {
+      window.removeEventListener('message', onMessage);
+      clearTimeout(timeoutId);
+      if (iframe.parentNode) iframe.remove();
+    }
+
+    function onMessage(event) {
+      const data = event.data;
+      if (!data || typeof data.authorized === 'undefined') return; // onno message ignore korun
+      if (settled) return;
+      settled = true;
+      cleanup();
 
       if (!data.authorized) {
         setStatus('No enrollment found for this account. Reach out to GSET Academy if you think this is a mistake.', true);
@@ -357,20 +378,9 @@
       }
 
       document.getElementById('content-view').style.display = 'block';
-    };
-
-    const script = document.createElement('script');
-    script.src = APPS_SCRIPT_URL + '?token=' + encodeURIComponent(idToken) + '&callback=__gsetAuthCallback';
-    script.onerror = function () {
-      cleanupJsonp();
-      setStatus('Something went wrong. Please try again.', true);
-    };
-    document.body.appendChild(script);
-
-    function cleanupJsonp() {
-      delete window.__gsetAuthCallback;
-      script.remove();
     }
+
+    window.addEventListener('message', onMessage);
   }
 
   function extractYouTubeId(url) {
